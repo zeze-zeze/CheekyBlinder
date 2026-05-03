@@ -376,8 +376,10 @@ void findregistrycallbackroutines(DWORD64 remove) {
     case 1909:
     case 2004:
         endAddress = DbgkLkmdUnregisterCallbackAddress;
+        break;
     case 2009:
         endAddress = PsSetLoadImageNotifyRoutineEx;
+        break;
     }
     DWORD64 patternaddress = PatternSearch(Device, CmUnRegisterCallbackAddress, endAddress, offsets.registry);
     DWORD offset = ReadMemoryDWORD(Device, patternaddress - 0x9);
@@ -417,8 +419,10 @@ void findimgcallbackroutine(DWORD64 remove) {
     case 1909:
     case 2004:
         endAddress = PsSetCreateProcessNotifyRoutine;
+        break;
     case 2009:
         endAddress = PsRemoveCreateThreadNotifyRoutine;
+        break;
     }
 
     DWORD64 patternaddress = PatternSearch(Device, PsSetLoadImageNotifyRoutineExAddress, endAddress, offsets.image);
